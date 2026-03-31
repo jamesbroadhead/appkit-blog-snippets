@@ -4,6 +4,14 @@ You must complete every step without asking the user for input. Use the Databric
 (already authenticated) for all workspace operations. When you're done, print the
 deployed app URL — nothing else should require user action.
 
+## 0. Install Databricks skills
+
+```bash
+databricks experimental aitools install
+```
+
+This gives your agent access to Databricks-aware tools for workspace operations.
+
 ## 1. Environment discovery
 
 ```bash
