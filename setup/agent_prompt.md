@@ -1,50 +1,157 @@
-Build a Databricks AppKit application called "wanderbricks-ops" with these requirements:
+Build and deploy a Databricks AppKit application called "wanderbricks-ops".
 
-**Dataset**: `samples.wanderbricks` (vacation rental marketplace — ships with every workspace)
+You must complete every step without asking the user for input. Use the Databricks CLI
+(already authenticated) for all workspace operations. When you're done, print the
+deployed app URL — nothing else should require user action.
 
-**Plugins**: server, analytics, genie, lakebase
+## 1. Environment discovery
 
-**Environment setup** (do this first):
-  - Use `databricks auth describe --output json | jq -r '.host'` to get DATABRICKS_HOST
-  - List warehouses with `databricks warehouses list --output json`.
-    If none exist, create a serverless one:
-    `databricks warehouses create --name "appkit-dev" --cluster-size "2X-Small" --warehouse-type PRO --enable-serverless --output json`
-  - Create a Genie space:
-    `databricks genie spaces create --name "Wanderbricks" --warehouse-id $WAREHOUSE_ID --tables samples.wanderbricks.bookings --tables samples.wanderbricks.properties --tables samples.wanderbricks.destinations --tables samples.wanderbricks.reviews --output json`
-  - Write all three values (DATABRICKS_HOST, DATABRICKS_WAREHOUSE_ID,
-    DATABRICKS_GENIE_SPACE_ID) to `.env`
+```bash
+DATABRICKS_HOST=$(databricks auth describe --output json | jq -r '.host')
+```
 
-**Data layer setup**:
-  - Copy bookings, users, properties, destinations from `samples.wanderbricks`
-    to `main.wanderbricks` using `databricks sql execute` (so we can sync them)
-  - Create synced tables in Lakebase for each (Snapshot mode):
-    bookings (PK: booking_id), users (PK: user_id),
-    properties (PK: property_id), destinations (PK: destination_id)
-  - Create a writable `booking_notes` table directly in Lakebase:
-    note_id SERIAL PK, booking_id BIGINT, agent_email TEXT,
-    note TEXT, action_taken TEXT DEFAULT 'no_action',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+Find an existing SQL Warehouse, or create one:
+
+```bash
+WAREHOUSE_ID=$(databricks warehouses list --output json | jq -r '.[0].id // empty')
+if [ -z "$WAREHOUSE_ID" ]; then
+  WAREHOUSE_ID=$(databricks warehouses create \
+    --name "appkit-dev" \
+    --cluster-size "2X-Small" \
+    --warehouse-type PRO \
+    --enable-serverless \
+    --output json | jq -r '.id')
+fi
+```
+
+Create a Genie space:
+
+```bash
+GENIE_SPACE_ID=$(databricks genie spaces create \
+  --name "Wanderbricks" \
+  --warehouse-id "$WAREHOUSE_ID" \
+  --tables samples.wanderbricks.bookings \
+  --tables samples.wanderbricks.properties \
+  --tables samples.wanderbricks.destinations \
+  --tables samples.wanderbricks.reviews \
+  --output json | jq -r '.id')
+```
+
+Find (or create) a Lakebase instance and get the connection details:
+
+```bash
+LAKEBASE_INSTANCE=$(databricks lakebase instances list --output json | jq -r '.[0].id // empty')
+if [ -z "$LAKEBASE_INSTANCE" ]; then
+  LAKEBASE_INSTANCE=$(databricks lakebase instances create \
+    --name "appkit-lakebase" \
+    --output json | jq -r '.id')
+fi
+LAKEBASE_DATABASE=$(databricks lakebase databases list \
+  --instance-id "$LAKEBASE_INSTANCE" --output json | jq -r '.[0].name // empty')
+if [ -z "$LAKEBASE_DATABASE" ]; then
+  LAKEBASE_DATABASE=$(databricks lakebase databases create \
+    --instance-id "$LAKEBASE_INSTANCE" \
+    --name "wanderbricks" \
+    --output json | jq -r '.name')
+fi
+```
+
+Write `.env`:
+
+```
+DATABRICKS_HOST=<value>
+DATABRICKS_WAREHOUSE_ID=<value>
+DATABRICKS_GENIE_SPACE_ID=<value>
+```
+
+## 2. Data layer
+
+Copy sample tables so we can sync them:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS main.wanderbricks;
+CREATE TABLE IF NOT EXISTS main.wanderbricks.bookings     AS SELECT * FROM samples.wanderbricks.bookings;
+CREATE TABLE IF NOT EXISTS main.wanderbricks.users        AS SELECT * FROM samples.wanderbricks.users;
+CREATE TABLE IF NOT EXISTS main.wanderbricks.properties   AS SELECT * FROM samples.wanderbricks.properties;
+CREATE TABLE IF NOT EXISTS main.wanderbricks.destinations AS SELECT * FROM samples.wanderbricks.destinations;
+```
+
+Run each via `databricks sql execute --warehouse-id $WAREHOUSE_ID --statement "..."`.
+
+Create synced tables in Lakebase (Snapshot mode) using the pipelines API:
+
+| Source table | Primary key |
+|---|---|
+| `main.wanderbricks.bookings` | `booking_id` |
+| `main.wanderbricks.users` | `user_id` |
+| `main.wanderbricks.properties` | `property_id` |
+| `main.wanderbricks.destinations` | `destination_id` |
+
+Wait for all pipelines to reach RUNNING/ONLINE state before continuing.
+
+Create the writable app table directly in Lakebase (use `databricks lakebase sql execute` or the Lakebase connection):
+
+```sql
+CREATE TABLE IF NOT EXISTS booking_notes (
+  note_id      SERIAL PRIMARY KEY,
+  booking_id   BIGINT NOT NULL,
+  agent_email  TEXT NOT NULL,
+  note         TEXT NOT NULL,
+  action_taken TEXT NOT NULL DEFAULT 'no_action',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_booking_notes_booking_id ON booking_notes (booking_id);
+```
+
+## 3. Scaffold the app
+
+Run `databricks apps init`, selecting Analytics, Genie, and Lakebase plugins.
+Then `cd wanderbricks-ops && npm install`.
+
+## 4. Application code
+
+**Dataset**: `samples.wanderbricks` (vacation rental marketplace)
+
+**Server** (`server/server.ts`):
+- Plugins: `server({ autoStart: false })`, `analytics({})`, `genie({ spaces: { wanderbricks: process.env.DATABRICKS_GENIE_SPACE_ID } })`, `lakebase()`
+- Custom routes via `appkit.server.extend()`:
+  - `GET /api/bookings/:id` — join bookings, users, properties, destinations by booking_id
+  - `POST /api/bookings/:id/notes` — insert into booking_notes
+  - `GET /api/bookings/:id/notes` — list notes for a booking, ordered by created_at DESC
+- Call `appkit.server.start()` after extend
 
 **Analytics query** (`config/queries/revenue_by_destination.sql`):
-  Query `samples.wanderbricks` for destination, country, booking count,
-  total revenue, and average rating — grouped by destination,
-  limited to top N results (parameterized)
+```sql
+-- @param limit NUMERIC
+SELECT d.destination, d.country,
+       COUNT(DISTINCT b.booking_id) AS total_bookings,
+       ROUND(SUM(b.total_amount), 2) AS total_revenue,
+       ROUND(AVG(r.rating), 1) AS avg_rating
+FROM samples.wanderbricks.bookings b
+JOIN samples.wanderbricks.properties p ON b.property_id = p.property_id
+JOIN samples.wanderbricks.destinations d ON p.destination_id = d.destination_id
+LEFT JOIN samples.wanderbricks.reviews r ON b.booking_id = r.booking_id
+GROUP BY d.destination, d.country
+ORDER BY total_revenue DESC
+LIMIT :limit
+```
 
-**Lakebase custom routes** (in server.ts):
-  - `GET /api/bookings/:id` — look up booking with guest and property details
-    (join synced bookings, users, properties, destinations tables)
-  - `POST /api/bookings/:id/notes` — add a note to a booking
-  - `GET /api/bookings/:id/notes` — list notes for a booking
+**Frontend** (React, in `client/src/`):
+- `RevenueByDestination.tsx` — table using `useAnalyticsQuery("revenue_by_destination", { limit: sql.number(10) })`
+- `RevenueChart.tsx` — `<BarChart queryKey="revenue_by_destination" xKey="destination" yKey="total_revenue" />`
+- `BookingManager.tsx` — booking lookup by ID with note-adding, fetches from the Lakebase routes
+- `WanderbricksChat.tsx` — `<GenieChat alias="wanderbricks" />`
+- `App.tsx` — two-column grid layout using AppKit UI Card components
 
-**Genie**: One space aliased as "wanderbricks"
+Use `@databricks/appkit` for the server and `@databricks/appkit-ui/react` for the frontend.
 
-**Frontend** (React):
-  - Revenue table and bar chart using `useAnalyticsQuery`
-  - Booking manager with lookup, guest details, and inline note-adding
-  - `<GenieChat>` component for conversational data exploration
-  - Use AppKit UI components (Card, Skeleton, etc.)
+## 5. Verify and deploy
 
-Use `@databricks/appkit` for the server and `@databricks/appkit-ui` for the frontend.
+1. Run `npm run dev` and confirm the app starts on `http://localhost:8000`
+2. Run `databricks bundle deploy`
+3. Get the deployed app URL from the deploy output
 
-**After scaffolding**: Run `npm run dev` to verify the app starts, then deploy
-with `databricks bundle deploy`.
+## 6. Done
+
+Print a summary of what was created (warehouse, Genie space, synced tables, app)
+and the URL of the deployed app. Do not print any remaining TODO items or manual steps.
