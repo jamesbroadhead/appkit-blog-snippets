@@ -14,6 +14,7 @@ See the blog post for step-by-step instructions. Key files:
 
 | File | Purpose |
 |------|---------|
+| `setup/configure_env.sh` | Auto-detect host, warehouse, and create Genie space → `.env` |
 | `setup/copy_to_catalog.sql` | Copy wanderbricks sample data to your catalog |
 | `setup/create_synced_tables.sh` | Create Lakebase synced tables via CLI |
 | `setup/create_booking_notes.sql` | Create the writable app table in Lakebase |
