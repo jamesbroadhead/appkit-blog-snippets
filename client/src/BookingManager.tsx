@@ -1,26 +1,55 @@
-import { useState } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@databricks/appkit-ui";
+import { useState, useMemo } from "react";
+import { useAnalyticsQuery } from "@databricks/appkit-ui/react";
+import { sql } from "@databricks/appkit-ui/js";
+import { Card, CardHeader, CardTitle, CardContent, Skeleton } from "@databricks/appkit-ui";
 
 export function BookingManager() {
   const [bookingId, setBookingId] = useState("");
-  const [booking, setBooking] = useState<any>(null);
+  const [searchId, setSearchId] = useState<string | null>(null);
+  const [flag, setFlag] = useState<any>(null);
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState("");
 
+  const params = useMemo(
+    () => (searchId ? { bookingId: sql.number(Number(searchId)) } : null),
+    [searchId],
+  );
+  const { data, loading, error } = useAnalyticsQuery(
+    params ? "booking_detail" : null,
+    params,
+  );
+
+  const booking = data?.[0] ?? null;
+
   const handleLookup = async () => {
-    const [bookingRes, notesRes] = await Promise.all([
-      fetch(`/api/bookings/${bookingId}`),
+    setSearchId(bookingId);
+    const [flagRes, notesRes] = await Promise.all([
+      fetch(`/api/bookings/${bookingId}/flag`),
       fetch(`/api/bookings/${bookingId}/notes`),
     ]);
-    setBooking(await bookingRes.json());
+    setFlag(await flagRes.json());
     setNotes(await notesRes.json());
+  };
+
+  const handleFlag = async () => {
+    if (flag) {
+      await fetch(`/api/bookings/${bookingId}/flag`, { method: "DELETE" });
+      setFlag(null);
+    } else {
+      const res = await fetch(`/api/bookings/${bookingId}/flag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "flagged for review" }),
+      });
+      setFlag(await res.json());
+    }
   };
 
   const handleAddNote = async () => {
     const res = await fetch(`/api/bookings/${bookingId}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note: newNote, action_taken: "note_added" }),
+      body: JSON.stringify({ note: newNote }),
     });
     const created = await res.json();
     setNotes([created, ...notes]);
@@ -44,6 +73,9 @@ export function BookingManager() {
         </button>
       </div>
 
+      {loading && <Skeleton className="h-48 w-full" />}
+      {error && <p className="text-destructive">{error}</p>}
+
       {booking && (
         <Card>
           <CardHeader>
@@ -56,6 +88,17 @@ export function BookingManager() {
               <p>{booking.check_in} → {booking.check_out} · {booking.status}</p>
               <p className="font-medium">${booking.total_amount}</p>
             </div>
+
+            <button
+              className={`mt-3 px-3 py-1 rounded text-sm ${
+                flag
+                  ? "bg-destructive text-destructive-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+              onClick={handleFlag}
+            >
+              {flag ? "Unflag" : "Flag for review"}
+            </button>
 
             <div className="mt-4 space-y-2">
               <h4 className="text-sm font-medium">Notes</h4>
@@ -77,7 +120,7 @@ export function BookingManager() {
                 <div key={n.note_id} className="text-sm border-l-2 pl-3 py-1">
                   <p>{n.note}</p>
                   <p className="text-muted-foreground text-xs">
-                    {n.agent_email} · {n.action_taken} · {new Date(n.created_at).toLocaleString()}
+                    {n.agent_email} · {new Date(n.created_at).toLocaleString()}
                   </p>
                 </div>
               ))}
