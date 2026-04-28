@@ -62,6 +62,31 @@ check "npm installed" \
   "Comes with Node.js"
 
 echo ""
+echo "Workspace profile:"
+PROFILES_JSON=$(databricks auth profiles --output json 2>/dev/null || echo '{"profiles":[]}')
+PROFILE_COUNT=$(echo "$PROFILES_JSON" | jq '.profiles | length' 2>/dev/null || echo 0)
+
+if [ "$PROFILE_COUNT" = "0" ]; then
+  echo "  ${FAIL} No CLI profiles configured"
+  echo "         -> Run: databricks auth login"
+  failures=$((failures + 1))
+elif [ "$PROFILE_COUNT" = "1" ]; then
+  PROFILE_NAME=$(echo "$PROFILES_JSON" | jq -r '.profiles[0].name')
+  PROFILE_HOST=$(echo "$PROFILES_JSON" | jq -r '.profiles[0].host')
+  echo "  ${OK} Single profile: ${PROFILE_NAME} (${PROFILE_HOST})"
+else
+  ACTIVE_PROFILE="${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
+  echo "  ${WARN} ${PROFILE_COUNT} profiles configured -- confirm you're targeting the right workspace."
+  echo ""
+  echo "         Configured profiles:"
+  echo "$PROFILES_JSON" | jq -r '.profiles[] | "           - \(.name) (\(.host))"'
+  echo ""
+  echo "         Active profile: ${ACTIVE_PROFILE}"
+  echo "         To switch:      export DATABRICKS_CONFIG_PROFILE=<profile-name>"
+  warnings=$((warnings + 1))
+fi
+
+echo ""
 echo "Databricks workspace:"
 check "CLI authenticated (databricks current-user me)" \
   "databricks current-user me --output json" \
