@@ -31,6 +31,11 @@ HOST=$(echo "$HOST_OUT" | jq -r '.host')
 echo "DATABRICKS_HOST=${HOST}" > "$ENV_FILE"
 echo "Using host: ${HOST}"
 
+if [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ]; then
+  echo "DATABRICKS_CONFIG_PROFILE=${DATABRICKS_CONFIG_PROFILE}" >> "$ENV_FILE"
+  echo "Using profile: ${DATABRICKS_CONFIG_PROFILE}"
+fi
+
 # --- SQL Warehouse ---
 WAREHOUSE_ID=$(databricks warehouses list --output json | jq -r '.[0].id // empty')
 
@@ -40,7 +45,7 @@ if [ -z "$WAREHOUSE_ID" ]; then
       --name "appkit-dev" \
       --cluster-size "2X-Small" \
       --warehouse-type PRO \
-      --enable-serverless \
+      --enable-serverless-compute \
       --output json 2>&1); then
     cat >&2 <<EOF
 ERROR: Failed to create SQL warehouse 'appkit-dev'.
@@ -69,14 +74,26 @@ fi
 echo "DATABRICKS_WAREHOUSE_ID=${WAREHOUSE_ID}" >> "$ENV_FILE"
 
 # --- Genie space ---
+# create-space takes a positional WAREHOUSE_ID and a SERIALIZED_SPACE JSON blob.
+# The data_sources.tables array MUST be sorted by identifier or the API rejects it.
+SERIALIZED_SPACE='{
+  "version": 2,
+  "data_sources": {
+    "tables": [
+      {"identifier": "samples.wanderbricks.bookings"},
+      {"identifier": "samples.wanderbricks.destinations"},
+      {"identifier": "samples.wanderbricks.properties"},
+      {"identifier": "samples.wanderbricks.reviews"}
+    ]
+  }
+}'
+
 echo "Creating Genie space..."
-if ! GENIE_OUT=$(databricks genie spaces create \
-    --name "Wanderbricks" \
-    --warehouse-id "$WAREHOUSE_ID" \
-    --tables samples.wanderbricks.bookings \
-    --tables samples.wanderbricks.properties \
-    --tables samples.wanderbricks.destinations \
-    --tables samples.wanderbricks.reviews \
+if ! GENIE_OUT=$(databricks genie create-space \
+    "$WAREHOUSE_ID" \
+    "$SERIALIZED_SPACE" \
+    --title "Wanderbricks" \
+    --description "Vacation rental marketplace analytics" \
     --output json 2>&1); then
   cat >&2 <<EOF
 ERROR: Failed to create Genie space 'Wanderbricks'.
@@ -101,7 +118,7 @@ What to try:
 EOF
   exit 1
 fi
-GENIE_SPACE_ID=$(echo "$GENIE_OUT" | jq -r '.id')
+GENIE_SPACE_ID=$(echo "$GENIE_OUT" | jq -r '.space_id')
 
 echo "DATABRICKS_GENIE_SPACE_ID=${GENIE_SPACE_ID}" >> "$ENV_FILE"
 echo "Created Genie space: ${GENIE_SPACE_ID}"
