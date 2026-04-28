@@ -223,7 +223,18 @@ if [ -z "$PGHOST" ]; then
   exit 1
 fi
 
+# Discover the postgres database resource (auto-created with the branch).
+# Needed for non-interactive 'databricks apps init --set lakebase.postgres.database=...'.
+LAKEBASE_DATABASE=$(databricks postgres list-databases "$BRANCH_NAME" --output json | jq -r '.[0].name // empty')
+if [ -z "$LAKEBASE_DATABASE" ]; then
+  echo "ERROR: No postgres database found under ${BRANCH_NAME}." >&2
+  echo "Lakebase normally auto-creates one with the branch -- check: databricks postgres list-databases ${BRANCH_NAME}" >&2
+  exit 1
+fi
+
 echo "LAKEBASE_ENDPOINT=${LAKEBASE_ENDPOINT}" >> "$ENV_FILE"
+echo "LAKEBASE_BRANCH=${BRANCH_NAME}" >> "$ENV_FILE"
+echo "LAKEBASE_DATABASE=${LAKEBASE_DATABASE}" >> "$ENV_FILE"
 echo "PGHOST=${PGHOST}" >> "$ENV_FILE"
 echo "PGDATABASE=databricks_postgres" >> "$ENV_FILE"
 echo "Configured Lakebase endpoint: ${LAKEBASE_ENDPOINT}"
