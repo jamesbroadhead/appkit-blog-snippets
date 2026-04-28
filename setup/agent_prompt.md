@@ -88,7 +88,14 @@ is used only for app-owned writable state — booking flags and notes that the a
 No data syncing or copying required.
 
 **Server** (`server/server.ts`):
-- Plugins: `server({ autoStart: false })`, `analytics({})`, `genie({ spaces: { wanderbricks: process.env.DATABRICKS_GENIE_SPACE_ID } })`, `lakebase()`
+- Plugins: `server({ autoStart: false })`, `analytics({})`, `genie({ spaces: { wanderbricks: genieSpaceId } })`, `lakebase()`. Hoist the env
+  var into a local first and crash on miss — `process.env.X` is `string |
+  undefined`, but the genie plugin's `spaces` requires `Record<string, string>`,
+  and an empty string would silently 404 from the Genie API at runtime:
+  ```ts
+  const genieSpaceId = process.env.DATABRICKS_GENIE_SPACE_ID;
+  if (!genieSpaceId) throw new Error('DATABRICKS_GENIE_SPACE_ID is required');
+  ```
 - On first start, auto-create the Lakebase tables if they don't exist. Use a
   dedicated `app` schema — the app's service principal does not have `CREATE`
   on `public`, so bare table names will fail with `permission denied for
@@ -173,9 +180,12 @@ From inside `wanderbricks-ops/`:
    stop it (`Ctrl+C`).
 
 2. Deploy and start the app — `databricks apps deploy` (from the project
-   directory) validates, uploads, and runs the app in one shot:
+   directory) validates, uploads, and runs the app in one shot. `apps init`
+   declares a `genie_space_name` bundle variable but does not set a default,
+   so pass it via `--var` (or the deploy will fail with an undefined
+   variable):
    ```bash
-   databricks apps deploy
+   databricks apps deploy --var=genie_space_name=Wanderbricks
    ```
    `databricks bundle deploy` alone is **not** sufficient: it deploys the
    bundle but doesn't start the app.
