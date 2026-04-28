@@ -1,11 +1,8 @@
 import { useAnalyticsQuery } from "@databricks/appkit-ui/react";
-import { sql } from "@databricks/appkit-ui/js";
 import { Skeleton } from "@databricks/appkit-ui";
-import { useMemo } from "react";
 
 export function RevenueByDestination() {
-  const params = useMemo(() => ({ limit: sql.number(10) }), []);
-  const { data, loading, error } = useAnalyticsQuery("revenue_by_destination", params);
+  const { data, loading, error } = useAnalyticsQuery("revenue_by_destination");
 
   if (loading) return <Skeleton className="h-48 w-full" />;
   if (error) return <p className="text-destructive">{error}</p>;
