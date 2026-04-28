@@ -44,10 +44,14 @@ curl -sL https://raw.githubusercontent.com/jamesbroadhead/appkit-blog-snippets/m
 ```
 
 This writes `.env` with `DATABRICKS_HOST`, `DATABRICKS_WAREHOUSE_ID`,
-`DATABRICKS_GENIE_SPACE_ID` (and `DATABRICKS_CONFIG_PROFILE` if you set one
-in step 0). It picks the first SQL warehouse, creates a serverless Pro one
-if there are none, and creates a Genie space called "Wanderbricks" backed
-by the sample bookings, properties, destinations, and reviews tables.
+`DATABRICKS_GENIE_SPACE_ID`, `LAKEBASE_ENDPOINT`, `PGHOST`, `PGDATABASE`
+(and `DATABRICKS_CONFIG_PROFILE` if you set one in step 0). It:
+
+- picks the first SQL warehouse, or creates a serverless Pro one named `appkit-dev`
+- creates a Genie space called "Wanderbricks" backed by the sample bookings,
+  properties, destinations, and reviews tables
+- creates a Lakebase Autoscaling project named `appkit-dev` (find-or-create),
+  discovers its default branch and primary endpoint
 
 If the script fails, its error output explains which create call failed and
 the most likely causes — surface that to the user and stop.

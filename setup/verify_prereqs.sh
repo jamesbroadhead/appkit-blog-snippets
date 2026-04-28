@@ -113,12 +113,12 @@ check "Apps API available" \
   "databricks apps list --output json" \
   "Databricks Apps may not be enabled in this workspace."
 
-# Lakebase failures here are common (feature opt-in) and the walkthrough fails
-# at npm run dev without it -- but we surface as a warning not a hard fail
-# because the user may have a Lakebase instance configured differently.
-soft_check "Lakebase enabled (databricks database list-database-instances)" \
-  "databricks database list-database-instances --output json" \
-  "Lakebase must be enabled. The walkthrough will fail at 'npm run dev' without it. Contact your workspace admin to enable Lakebase."
+# Lakebase Autoscaling Postgres is the storage for app-owned writable state.
+# Soft warning so users with the feature gated to an admin can still proceed
+# manually -- configure_env.sh will fail loudly later if it really is missing.
+soft_check "Lakebase Autoscaling reachable (databricks postgres list-projects)" \
+  "databricks postgres list-projects --output json" \
+  "Lakebase Autoscaling must be enabled. The walkthrough will fail at 'configure_env.sh' without it. Contact your workspace admin."
 
 echo ""
 if [ $failures -eq 0 ] && [ $warnings -eq 0 ]; then
