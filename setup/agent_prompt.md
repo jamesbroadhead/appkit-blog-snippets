@@ -140,8 +140,13 @@ JOIN samples.wanderbricks.destinations d ON p.destination_id = d.destination_id
 LEFT JOIN samples.wanderbricks.reviews r ON b.booking_id = r.booking_id
 GROUP BY d.destination, d.country
 ORDER BY total_revenue DESC
-LIMIT :limit
+LIMIT CAST(:limit AS INT)
 ```
+
+The `CAST(... AS INT)` is required: AppKit's analytics plugin binds
+`sql.number()` parameters as `DECIMAL(10,0)`, but Spark's `LIMIT` clause
+rejects anything that isn't an integer
+(`INVALID_LIMIT_LIKE_EXPRESSION.DATA_TYPE`). Cast in SQL.
 
 `booking_detail.sql`:
 ```sql
