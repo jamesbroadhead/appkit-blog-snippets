@@ -158,11 +158,31 @@ Use `@databricks/appkit` for the server and `@databricks/appkit-ui/react` for th
 
 ## 5. Verify and deploy
 
-1. Run `npm run dev` and confirm the app starts on `http://localhost:8000`
-2. Run `databricks bundle deploy`
-3. Get the deployed app URL from the deploy output
+From inside `wanderbricks-ops/`:
+
+1. Local smoke test:
+   ```bash
+   npm run dev
+   ```
+   Confirm the server logs show it listening on `http://localhost:8000`, then
+   stop it (`Ctrl+C`).
+
+2. Deploy and start the app — `databricks apps deploy` (from the project
+   directory) validates, uploads, and runs the app in one shot:
+   ```bash
+   databricks apps deploy
+   ```
+   `databricks bundle deploy` alone is **not** sufficient: it deploys the
+   bundle but doesn't start the app.
+
+3. Fetch the deployed URL:
+   ```bash
+   APP_URL=$(databricks apps get wanderbricks-ops --output json | jq -r '.url')
+   echo "$APP_URL"
+   ```
 
 ## 6. Done
 
-Print a summary of what was created (warehouse, Genie space, app) and the URL
-of the deployed app. Do not print any remaining TODO items or manual steps.
+Print a summary of what was created (warehouse, Genie space, Lakebase
+project, app) and `$APP_URL` from step 5. Do not print any remaining TODO
+items or manual steps.
