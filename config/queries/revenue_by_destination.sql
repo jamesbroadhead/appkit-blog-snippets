@@ -1,4 +1,7 @@
--- @param limit NUMERIC
+-- LIMIT is hardcoded rather than parameterized: the AppKit type-generator
+-- describes queries by substituting empty strings for parameters, which
+-- Spark rejects for LIMIT (must be foldable). When the typegen fix lands,
+-- this can become `-- @param limit NUMERIC` + `LIMIT :limit` again.
 
 SELECT
   d.destination,
@@ -12,4 +15,4 @@ JOIN samples.wanderbricks.destinations d ON p.destination_id = d.destination_id
 LEFT JOIN samples.wanderbricks.reviews r ON b.booking_id = r.booking_id
 GROUP BY d.destination, d.country
 ORDER BY total_revenue DESC
-LIMIT :limit
+LIMIT 10

@@ -115,9 +115,10 @@ No data syncing or copying required.
 
 **Analytics queries** (in `config/queries/`):
 
-`revenue_by_destination.sql`:
+`revenue_by_destination.sql` (LIMIT hardcoded — the AppKit type-generator
+substitutes empty strings for params, which Spark rejects for LIMIT; tracked
+upstream):
 ```sql
--- @param limit NUMERIC
 SELECT d.destination, d.country,
        COUNT(DISTINCT b.booking_id) AS total_bookings,
        ROUND(SUM(b.total_amount), 2) AS total_revenue,
@@ -128,7 +129,7 @@ JOIN samples.wanderbricks.destinations d ON p.destination_id = d.destination_id
 LEFT JOIN samples.wanderbricks.reviews r ON b.booking_id = r.booking_id
 GROUP BY d.destination, d.country
 ORDER BY total_revenue DESC
-LIMIT :limit
+LIMIT 10
 ```
 
 `booking_detail.sql`:
@@ -146,7 +147,7 @@ WHERE b.booking_id = :bookingId
 ```
 
 **Frontend** (React, in `client/src/`):
-- `RevenueByDestination.tsx` — table using `useAnalyticsQuery("revenue_by_destination", { limit: sql.number(10) })`
+- `RevenueByDestination.tsx` — table using `useAnalyticsQuery("revenue_by_destination")` (no params; LIMIT is in the SQL)
 - `RevenueChart.tsx` — `<BarChart queryKey="revenue_by_destination" xKey="destination" yKey="total_revenue" />`
 - `BookingManager.tsx` — looks up a booking via `useAnalyticsQuery("booking_detail", { bookingId })`,
   displays guest/property details, shows a "Flag for review" button and a notes panel.
