@@ -50,8 +50,9 @@ This writes `.env` with `DATABRICKS_HOST`, `DATABRICKS_WAREHOUSE_ID`,
 - picks the first SQL warehouse, or creates a serverless Pro one named `appkit-dev`
 - creates a Genie space called "Wanderbricks" backed by the sample bookings,
   properties, destinations, and reviews tables
-- creates a Lakebase Autoscaling project named `appkit-dev` (find-or-create),
-  discovers its default branch and primary endpoint
+- creates a Lakebase Autoscaling project named `appkit-dev` (find-or-create)
+  configured for scale-to-zero (min 0 CU, suspend after 5 min idle); discovers
+  its default branch, primary endpoint, and database
 
 If the script fails, its error output explains which create call failed and
 the most likely causes — surface that to the user and stop.
