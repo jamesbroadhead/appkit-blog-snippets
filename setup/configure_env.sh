@@ -27,7 +27,11 @@ Common causes:
 EOF
   exit 1
 fi
-HOST=$(echo "$HOST_OUT" | jq -r '.host')
+HOST=$(echo "$HOST_OUT" | jq -r '.details.host // empty')
+if [ -z "$HOST" ]; then
+  echo "ERROR: 'databricks auth describe' did not return a host. Run 'databricks auth login' or set DATABRICKS_HOST." >&2
+  exit 1
+fi
 echo "DATABRICKS_HOST=${HOST}" > "$ENV_FILE"
 echo "Using host: ${HOST}"
 
@@ -151,7 +155,7 @@ echo "Created Genie space: ${GENIE_SPACE_ID}"
 PROJECT_ID="appkit-dev"
 PROJECT_NAME="projects/${PROJECT_ID}"
 
-if databricks postgres get-project "$PROJECT_ID" --output json >/dev/null 2>&1; then
+if databricks postgres get-project "$PROJECT_NAME" --output json >/dev/null 2>&1; then
   echo "Using existing Lakebase project: ${PROJECT_NAME}"
 else
   echo "Creating Lakebase Autoscaling project '${PROJECT_ID}' with scale-to-zero (this may take a minute)..."
