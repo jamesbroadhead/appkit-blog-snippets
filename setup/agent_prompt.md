@@ -6,35 +6,28 @@ which profile to use. Once a profile is selected, run to completion using the
 Databricks CLI for all workspace operations. When you're done, print the
 deployed app URL — nothing else should require user action.
 
-## 0. Verify workspace connection
+## 0. Verify prerequisites
 
-Before anything else, confirm the Databricks CLI is authenticated and decide
-which workspace to use. List the configured profiles:
-
-```bash
-databricks auth profiles --output json
-```
-
-Decide based on what you find:
-
-- **No profiles configured** — stop. Tell the user to run `databricks auth login`
-  and re-invoke this prompt. Do not proceed.
-- **Exactly one profile** — use it. If it is not named `DEFAULT`, export
-  `DATABRICKS_CONFIG_PROFILE=<name>` so subsequent CLI calls and the AppKit
-  runtime use it.
-- **Multiple profiles** — this is the only step where you may pause for user
-  input. Show the user each profile name with its `host`, then ask which one
-  to use. Once chosen, `export DATABRICKS_CONFIG_PROFILE=<name>`.
-
-Verify the chosen profile actually works before proceeding:
+Run the verification script — it checks local tools, workspace access, and
+profile selection in one go:
 
 ```bash
-databricks current-user me
+curl -sL https://raw.githubusercontent.com/jamesbroadhead/appkit-blog-snippets/master/setup/verify_prereqs.sh | bash
 ```
 
-If this command fails, surface the error and stop — do not continue to later
-steps. If you set `DATABRICKS_CONFIG_PROFILE`, remember to write it to `.env`
-in step 2 alongside the other variables.
+Three possible outcomes, three responses:
+
+- **Exit 0** — everything's ready. Continue to step 1.
+- **Exit 1, "N profiles configured -- pick one before continuing"** — this is
+  the only step where you may pause for user input. Show the user the listed
+  profiles and their hosts, ask which workspace to deploy to, then:
+  ```bash
+  export DATABRICKS_CONFIG_PROFILE=<chosen-name>
+  ```
+  Re-run the verify script. Loop until it exits 0.
+- **Exit 1, any other failure** — surface the error to the user and stop. Do
+  not continue to later steps. The script's output names the failing check
+  and the fix.
 
 ## 1. Install Databricks skills
 
@@ -44,47 +37,20 @@ databricks experimental aitools install
 
 This gives your agent access to Databricks-aware tools for workspace operations.
 
-## 2. Environment discovery
+## 2. Configure environment
 
 ```bash
-DATABRICKS_HOST=$(databricks auth describe --output json | jq -r '.host')
+curl -sL https://raw.githubusercontent.com/jamesbroadhead/appkit-blog-snippets/master/setup/configure_env.sh | bash
 ```
 
-Find an existing SQL Warehouse, or create one:
+This writes `.env` with `DATABRICKS_HOST`, `DATABRICKS_WAREHOUSE_ID`,
+`DATABRICKS_GENIE_SPACE_ID` (and `DATABRICKS_CONFIG_PROFILE` if you set one
+in step 0). It picks the first SQL warehouse, creates a serverless Pro one
+if there are none, and creates a Genie space called "Wanderbricks" backed
+by the sample bookings, properties, destinations, and reviews tables.
 
-```bash
-WAREHOUSE_ID=$(databricks warehouses list --output json | jq -r '.[0].id // empty')
-if [ -z "$WAREHOUSE_ID" ]; then
-  WAREHOUSE_ID=$(databricks warehouses create \
-    --name "appkit-dev" \
-    --cluster-size "2X-Small" \
-    --warehouse-type PRO \
-    --enable-serverless \
-    --output json | jq -r '.id')
-fi
-```
-
-Create a Genie space:
-
-```bash
-GENIE_SPACE_ID=$(databricks genie spaces create \
-  --name "Wanderbricks" \
-  --warehouse-id "$WAREHOUSE_ID" \
-  --tables samples.wanderbricks.bookings \
-  --tables samples.wanderbricks.properties \
-  --tables samples.wanderbricks.destinations \
-  --tables samples.wanderbricks.reviews \
-  --output json | jq -r '.id')
-```
-
-Write `.env` (include `DATABRICKS_CONFIG_PROFILE` only if you set one in step 0):
-
-```
-DATABRICKS_HOST=<value>
-DATABRICKS_WAREHOUSE_ID=<value>
-DATABRICKS_GENIE_SPACE_ID=<value>
-DATABRICKS_CONFIG_PROFILE=<value>   # only if non-DEFAULT profile selected in step 0
-```
+If the script fails, its error output explains which create call failed and
+the most likely causes — surface that to the user and stop.
 
 ## 3. Scaffold the app
 
