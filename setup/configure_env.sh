@@ -37,10 +37,31 @@ if [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ]; then
 fi
 
 # --- SQL Warehouse ---
-WAREHOUSE_ID=$(databricks warehouses list --output json | jq -r '.[0].id // empty')
+# Genie requires a Pro serverless warehouse, so don't just grab .[0]: filter
+# for warehouse_type=PRO and enable_serverless_compute=true, prefer RUNNING
+# over STOPPED, and skip DELETING/DELETED. If no eligible warehouse exists,
+# fall through to create one.
+WAREHOUSES_JSON=$(databricks warehouses list --output json)
+ELIGIBLE=$(echo "$WAREHOUSES_JSON" | jq '
+  [.[]
+   | select(.warehouse_type == "PRO")
+   | select(.enable_serverless_compute == true)
+   | select(.state != "DELETING" and .state != "DELETED")
+  ]
+  | sort_by(if .state == "RUNNING" then 0 else 1 end)
+')
+WAREHOUSE_ID=$(echo "$ELIGIBLE" | jq -r '.[0].id // empty')
+WAREHOUSE_NAME=$(echo "$ELIGIBLE" | jq -r '.[0].name // empty')
+WAREHOUSE_STATE=$(echo "$ELIGIBLE" | jq -r '.[0].state // empty')
 
 if [ -z "$WAREHOUSE_ID" ]; then
-  echo "No warehouses found. Creating a serverless warehouse..."
+  TOTAL=$(echo "$WAREHOUSES_JSON" | jq 'length')
+  if [ "$TOTAL" -gt 0 ]; then
+    echo "Found ${TOTAL} warehouse(s) but none are Pro + serverless (Genie requires this)."
+    echo "Creating a Pro serverless warehouse..."
+  else
+    echo "No warehouses found. Creating a Pro serverless warehouse..."
+  fi
   if ! WAREHOUSE_OUT=$(databricks warehouses create \
       --name "appkit-dev" \
       --cluster-size "2X-Small" \
@@ -68,7 +89,7 @@ EOF
   WAREHOUSE_ID=$(echo "$WAREHOUSE_OUT" | jq -r '.id')
   echo "Created warehouse: ${WAREHOUSE_ID}"
 else
-  echo "Using existing warehouse: ${WAREHOUSE_ID}"
+  echo "Using existing Pro serverless warehouse: ${WAREHOUSE_NAME} (${WAREHOUSE_ID}, ${WAREHOUSE_STATE})"
 fi
 
 echo "DATABRICKS_WAREHOUSE_ID=${WAREHOUSE_ID}" >> "$ENV_FILE"
