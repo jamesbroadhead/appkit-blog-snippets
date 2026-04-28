@@ -58,8 +58,25 @@ the most likely causes — surface that to the user and stop.
 
 ## 3. Scaffold the app
 
-Run `databricks apps init`, selecting Analytics, Genie, and Lakebase plugins.
-Then `cd wanderbricks-ops && npm install`.
+Run `databricks apps init` non-interactively, sourcing the IDs from the `.env`
+that step 2 wrote:
+
+```bash
+set -a; source .env; set +a
+
+databricks apps init \
+  --name wanderbricks-ops \
+  --features=analytics,genie,lakebase \
+  --set analytics.sql-warehouse.id="$DATABRICKS_WAREHOUSE_ID" \
+  --set genie.genie-space.id="$DATABRICKS_GENIE_SPACE_ID" \
+  --set lakebase.postgres.branch="$LAKEBASE_BRANCH" \
+  --set lakebase.postgres.database="$LAKEBASE_DATABASE"
+
+# apps init writes its own .env inside wanderbricks-ops/ -- replace it with the
+# one configure_env.sh wrote, which has the resolved Lakebase host/endpoint.
+mv .env wanderbricks-ops/.env
+cd wanderbricks-ops && npm install
+```
 
 ## 4. Application code
 
