@@ -51,8 +51,8 @@ This writes `.env` with `DATABRICKS_HOST`, `DATABRICKS_WAREHOUSE_ID`,
 - creates a Genie space called "Wanderbricks" backed by the sample bookings,
   properties, destinations, and reviews tables
 - creates a Lakebase Autoscaling project named `appkit-dev` (find-or-create)
-  configured for scale-to-zero (min 0 CU, suspend after 5 min idle); discovers
-  its default branch, primary endpoint, and database
+  configured for scale-to-zero (min 0.5 CU — platform floor — suspend after
+  5 min idle); discovers its default branch, primary endpoint, and database
 
 If the script fails, its error output explains which create call failed and
 the most likely causes — surface that to the user and stop.

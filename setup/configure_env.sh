@@ -155,16 +155,20 @@ if databricks postgres get-project "$PROJECT_ID" --output json >/dev/null 2>&1; 
   echo "Using existing Lakebase project: ${PROJECT_NAME}"
 else
   echo "Creating Lakebase Autoscaling project '${PROJECT_ID}' with scale-to-zero (this may take a minute)..."
-  # default_endpoint_settings configures the auto-created endpoint:
-  #   - autoscaling_limit_min_cu: 0  -> scale to zero when idle
-  #   - autoscaling_limit_max_cu: 1  -> cap at 1 CU (plenty for the demo)
+  # spec.default_endpoint_settings configures the auto-created endpoint:
+  #   - autoscaling_limit_min_cu: 0.5 -> platform minimum (closest to scale-to-zero)
+  #   - autoscaling_limit_max_cu: 1   -> cap at 1 CU (plenty for the demo)
   #   - suspend_timeout_duration: 300s -> suspend after 5 min idle
+  # Note: the request body needs a `spec` wrapper -- without it, the API
+  # silently ignores the values and applies the platform defaults.
   if ! PROJECT_OUT=$(databricks postgres create-project "$PROJECT_ID" \
       --json '{
-        "default_endpoint_settings": {
-          "autoscaling_limit_min_cu": 0,
-          "autoscaling_limit_max_cu": 1,
-          "suspend_timeout_duration": "300s"
+        "spec": {
+          "default_endpoint_settings": {
+            "autoscaling_limit_min_cu": 0.5,
+            "autoscaling_limit_max_cu": 1,
+            "suspend_timeout_duration": "300s"
+          }
         }
       }' \
       --output json 2>&1); then
@@ -209,9 +213,12 @@ if [ -z "$ENDPOINT_JSON" ] || [ "$ENDPOINT_JSON" = "null" ]; then
   echo "Creating primary endpoint under ${BRANCH_NAME} (scale-to-zero)..."
   if ! ENDPOINT_OUT=$(databricks postgres create-endpoint "$BRANCH_NAME" "primary" \
       --json '{
-        "autoscaling_limit_min_cu": 0,
-        "autoscaling_limit_max_cu": 1,
-        "suspend_timeout_duration": "300s"
+        "spec": {
+          "endpoint_type": "ENDPOINT_TYPE_READ_WRITE",
+          "autoscaling_limit_min_cu": 0.5,
+          "autoscaling_limit_max_cu": 1,
+          "suspend_timeout_duration": "300s"
+        }
       }' \
       --output json 2>&1); then
     cat >&2 <<EOF
