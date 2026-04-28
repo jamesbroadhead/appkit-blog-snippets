@@ -1,6 +1,5 @@
-import { useAnalyticsQuery } from "@databricks/appkit-ui/react";
+import { useAnalyticsQuery, Skeleton } from "@databricks/appkit-ui/react";
 import { sql } from "@databricks/appkit-ui/js";
-import { Skeleton } from "@databricks/appkit-ui";
 import { useMemo } from "react";
 
 export function RevenueByDestination() {
