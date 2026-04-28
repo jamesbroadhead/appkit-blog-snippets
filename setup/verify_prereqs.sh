@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Verify prerequisites for the wanderbricks-ops AppKit walkthrough.
+#
+# Runs best-effort checks against your local tools and Databricks workspace,
+# then prints a checklist. "Can I create X?" permissions can't be probed via
+# the CLI -- if a later step fails on create (warehouse, Genie space, app
+# deploy), see the troubleshooting section in the blog post.
+#
+# Usage: bash setup/verify_prereqs.sh
+
+# Intentionally not -e: we want to keep checking after individual failures.
+set -uo pipefail
+
+OK="[OK]  "
+FAIL="[FAIL]"
+WARN="[WARN]"
+
+failures=0
+warnings=0
+
+check() {
+  local label="$1"
+  local cmd="$2"
+  local fix="$3"
+  if eval "$cmd" >/dev/null 2>&1; then
+    echo "  ${OK} ${label}"
+  else
+    echo "  ${FAIL} ${label}"
+    echo "         -> ${fix}"
+    failures=$((failures + 1))
+  fi
+}
+
+soft_check() {
+  local label="$1"
+  local cmd="$2"
+  local fix="$3"
+  if eval "$cmd" >/dev/null 2>&1; then
+    echo "  ${OK} ${label}"
+  else
+    echo "  ${WARN} ${label}"
+    echo "         -> ${fix}"
+    warnings=$((warnings + 1))
+  fi
+}
+
+echo "Local tools:"
+check "databricks CLI installed" \
+  "command -v databricks" \
+  "Install: https://docs.databricks.com/dev-tools/cli/install.html"
+check "jq installed" \
+  "command -v jq" \
+  "Install via your package manager (brew install jq / apt install jq)"
+check "curl installed" \
+  "command -v curl" \
+  "Install via your package manager"
+check "Node.js >= 20" \
+  "node -e 'process.exit(parseInt(process.versions.node.split(\".\")[0]) >= 20 ? 0 : 1)'" \
+  "Install Node.js 20 or newer: https://nodejs.org/"
+check "npm installed" \
+  "command -v npm" \
+  "Comes with Node.js"
+
+echo ""
+echo "Databricks workspace:"
+check "CLI authenticated (databricks current-user me)" \
+  "databricks current-user me --output json" \
+  "Run: databricks auth login. If you have multiple profiles, set DATABRICKS_CONFIG_PROFILE."
+check "Can list SQL warehouses" \
+  "databricks warehouses list --output json" \
+  "You may not have workspace access. Contact your workspace admin."
+check "samples.wanderbricks dataset accessible" \
+  "databricks tables get samples.wanderbricks.bookings --output json" \
+  "Dataset must exist and be readable. Contact your workspace admin if missing or unshared."
+check "Genie spaces API available" \
+  "databricks genie spaces list --output json" \
+  "Genie may not be enabled in this workspace."
+check "Apps API available" \
+  "databricks apps list --output json" \
+  "Databricks Apps may not be enabled in this workspace."
+
+# Lakebase failures here are common (feature opt-in) and the walkthrough fails
+# at npm run dev without it -- but we surface as a warning not a hard fail
+# because the user may have a Lakebase instance configured differently.
+soft_check "Lakebase enabled (databricks database list-database-instances)" \
+  "databricks database list-database-instances --output json" \
+  "Lakebase must be enabled. The walkthrough will fail at 'npm run dev' without it. Contact your workspace admin to enable Lakebase."
+
+echo ""
+if [ $failures -eq 0 ] && [ $warnings -eq 0 ]; then
+  echo "All prerequisite checks passed. You're ready to start."
+  exit 0
+elif [ $failures -eq 0 ]; then
+  echo "${warnings} warning(s) above. The walkthrough may still proceed but expect issues at the flagged step."
+  exit 0
+else
+  echo "${failures} required check(s) failed. Fix the issues above before continuing."
+  echo ""
+  echo "Note: 'can I create X?' permissions can't be pre-flighted via the CLI."
+  echo "If a later step fails on create (warehouse, Genie space, app deploy),"
+  echo "see the troubleshooting section in the blog post."
+  exit 1
+fi
