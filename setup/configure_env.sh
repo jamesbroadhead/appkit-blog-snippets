@@ -154,8 +154,20 @@ PROJECT_NAME="projects/${PROJECT_ID}"
 if databricks postgres get-project "$PROJECT_ID" --output json >/dev/null 2>&1; then
   echo "Using existing Lakebase project: ${PROJECT_NAME}"
 else
-  echo "Creating Lakebase Autoscaling project '${PROJECT_ID}' (this may take a minute)..."
-  if ! PROJECT_OUT=$(databricks postgres create-project "$PROJECT_ID" --output json 2>&1); then
+  echo "Creating Lakebase Autoscaling project '${PROJECT_ID}' with scale-to-zero (this may take a minute)..."
+  # default_endpoint_settings configures the auto-created endpoint:
+  #   - autoscaling_limit_min_cu: 0  -> scale to zero when idle
+  #   - autoscaling_limit_max_cu: 1  -> cap at 1 CU (plenty for the demo)
+  #   - suspend_timeout_duration: 300s -> suspend after 5 min idle
+  if ! PROJECT_OUT=$(databricks postgres create-project "$PROJECT_ID" \
+      --json '{
+        "default_endpoint_settings": {
+          "autoscaling_limit_min_cu": 0,
+          "autoscaling_limit_max_cu": 1,
+          "suspend_timeout_duration": "300s"
+        }
+      }' \
+      --output json 2>&1); then
     cat >&2 <<EOF
 ERROR: Failed to create Lakebase Autoscaling project '${PROJECT_ID}'.
 
@@ -194,8 +206,14 @@ echo "Using Lakebase branch: ${BRANCH_NAME}"
 # Find or create the primary endpoint.
 ENDPOINT_JSON=$(databricks postgres list-endpoints "$BRANCH_NAME" --output json | jq '.[0] // empty')
 if [ -z "$ENDPOINT_JSON" ] || [ "$ENDPOINT_JSON" = "null" ]; then
-  echo "Creating primary endpoint under ${BRANCH_NAME}..."
-  if ! ENDPOINT_OUT=$(databricks postgres create-endpoint "$BRANCH_NAME" "primary" --output json 2>&1); then
+  echo "Creating primary endpoint under ${BRANCH_NAME} (scale-to-zero)..."
+  if ! ENDPOINT_OUT=$(databricks postgres create-endpoint "$BRANCH_NAME" "primary" \
+      --json '{
+        "autoscaling_limit_min_cu": 0,
+        "autoscaling_limit_max_cu": 1,
+        "suspend_timeout_duration": "300s"
+      }' \
+      --output json 2>&1); then
     cat >&2 <<EOF
 ERROR: Failed to create Lakebase endpoint under ${BRANCH_NAME}.
 
