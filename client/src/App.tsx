@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@databricks/appkit-ui";
+import { Card, CardHeader, CardTitle, CardContent } from "@databricks/appkit-ui/react";
 import { RevenueByDestination } from "./RevenueByDestination";
 import { RevenueChart } from "./RevenueChart";
 import { BookingManager } from "./BookingManager";

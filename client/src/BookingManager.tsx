@@ -1,7 +1,13 @@
 import { useState, useMemo } from "react";
-import { useAnalyticsQuery } from "@databricks/appkit-ui/react";
+import {
+  useAnalyticsQuery,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Skeleton,
+} from "@databricks/appkit-ui/react";
 import { sql } from "@databricks/appkit-ui/js";
-import { Card, CardHeader, CardTitle, CardContent, Skeleton } from "@databricks/appkit-ui";
 
 export function BookingManager() {
   const [bookingId, setBookingId] = useState("");
