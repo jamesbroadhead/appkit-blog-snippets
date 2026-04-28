@@ -107,8 +107,8 @@ check "samples.wanderbricks dataset accessible" \
   "databricks tables get samples.wanderbricks.bookings --output json" \
   "Dataset must exist and be readable. Contact your workspace admin if missing or unshared."
 check "Genie spaces API available" \
-  "databricks genie spaces list --output json" \
-  "Genie may not be enabled in this workspace."
+  "databricks genie list-spaces --output json" \
+  "Genie may not be enabled in this workspace, or your CLI version is too old (need a recent databricks CLI; older builds used 'genie spaces list')."
 check "Apps API available" \
   "databricks apps list --output json" \
   "Databricks Apps may not be enabled in this workspace."
