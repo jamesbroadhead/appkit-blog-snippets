@@ -1,10 +1,35 @@
 Build and deploy a Databricks AppKit application called "wanderbricks-ops".
 
-You must complete every step without asking the user for input. Use the Databricks CLI
-(already authenticated) for all workspace operations. When you're done, print the
+Complete every step without asking the user for input, with one exception:
+in step 0, if multiple Databricks CLI profiles are configured, ask the user
+which profile to use. Once a profile is selected, run to completion using the
+Databricks CLI for all workspace operations. When you're done, print the
 deployed app URL — nothing else should require user action.
 
-## 0. Install Databricks skills
+## 0. Verify prerequisites
+
+Run the verification script — it checks local tools, workspace access, and
+profile selection in one go:
+
+```bash
+curl -sL https://raw.githubusercontent.com/jamesbroadhead/appkit-blog-snippets/master/setup/verify_prereqs.sh | bash
+```
+
+Three possible outcomes, three responses:
+
+- **Exit 0** — everything's ready. Continue to step 1.
+- **Exit 1, "N profiles configured -- pick one before continuing"** — this is
+  the only step where you may pause for user input. Show the user the listed
+  profiles and their hosts, ask which workspace to deploy to, then:
+  ```bash
+  export DATABRICKS_CONFIG_PROFILE=<chosen-name>
+  ```
+  Re-run the verify script. Loop until it exits 0.
+- **Exit 1, any other failure** — surface the error to the user and stop. Do
+  not continue to later steps. The script's output names the failing check
+  and the fix.
+
+## 1. Install Databricks skills
 
 ```bash
 databricks experimental aitools install
@@ -12,53 +37,27 @@ databricks experimental aitools install
 
 This gives your agent access to Databricks-aware tools for workspace operations.
 
-## 1. Environment discovery
+## 2. Configure environment
 
 ```bash
-DATABRICKS_HOST=$(databricks auth describe --output json | jq -r '.host')
+curl -sL https://raw.githubusercontent.com/jamesbroadhead/appkit-blog-snippets/master/setup/configure_env.sh | bash
 ```
 
-Find an existing SQL Warehouse, or create one:
+This writes `.env` with `DATABRICKS_HOST`, `DATABRICKS_WAREHOUSE_ID`,
+`DATABRICKS_GENIE_SPACE_ID` (and `DATABRICKS_CONFIG_PROFILE` if you set one
+in step 0). It picks the first SQL warehouse, creates a serverless Pro one
+if there are none, and creates a Genie space called "Wanderbricks" backed
+by the sample bookings, properties, destinations, and reviews tables.
 
-```bash
-WAREHOUSE_ID=$(databricks warehouses list --output json | jq -r '.[0].id // empty')
-if [ -z "$WAREHOUSE_ID" ]; then
-  WAREHOUSE_ID=$(databricks warehouses create \
-    --name "appkit-dev" \
-    --cluster-size "2X-Small" \
-    --warehouse-type PRO \
-    --enable-serverless \
-    --output json | jq -r '.id')
-fi
-```
+If the script fails, its error output explains which create call failed and
+the most likely causes — surface that to the user and stop.
 
-Create a Genie space:
-
-```bash
-GENIE_SPACE_ID=$(databricks genie spaces create \
-  --name "Wanderbricks" \
-  --warehouse-id "$WAREHOUSE_ID" \
-  --tables samples.wanderbricks.bookings \
-  --tables samples.wanderbricks.properties \
-  --tables samples.wanderbricks.destinations \
-  --tables samples.wanderbricks.reviews \
-  --output json | jq -r '.id')
-```
-
-Write `.env`:
-
-```
-DATABRICKS_HOST=<value>
-DATABRICKS_WAREHOUSE_ID=<value>
-DATABRICKS_GENIE_SPACE_ID=<value>
-```
-
-## 2. Scaffold the app
+## 3. Scaffold the app
 
 Run `databricks apps init`, selecting Analytics, Genie, and Lakebase plugins.
 Then `cd wanderbricks-ops && npm install`.
 
-## 3. Application code
+## 4. Application code
 
 **Dataset**: `samples.wanderbricks` (vacation rental marketplace — ships with every workspace)
 
@@ -136,13 +135,13 @@ WHERE b.booking_id = :bookingId
 
 Use `@databricks/appkit` for the server and `@databricks/appkit-ui/react` for the frontend.
 
-## 4. Verify and deploy
+## 5. Verify and deploy
 
 1. Run `npm run dev` and confirm the app starts on `http://localhost:8000`
 2. Run `databricks bundle deploy`
 3. Get the deployed app URL from the deploy output
 
-## 5. Done
+## 6. Done
 
 Print a summary of what was created (warehouse, Genie space, app) and the URL
 of the deployed app. Do not print any remaining TODO items or manual steps.
