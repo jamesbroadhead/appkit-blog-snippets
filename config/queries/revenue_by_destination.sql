@@ -12,4 +12,5 @@ JOIN samples.wanderbricks.destinations d ON p.destination_id = d.destination_id
 LEFT JOIN samples.wanderbricks.reviews r ON b.booking_id = r.booking_id
 GROUP BY d.destination, d.country
 ORDER BY total_revenue DESC
-LIMIT :limit
+-- sql.number() produces NUMERIC; Spark's LIMIT requires INT, so cast.
+LIMIT CAST(:limit AS INT)
