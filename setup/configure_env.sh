@@ -123,6 +123,90 @@ GENIE_SPACE_ID=$(echo "$GENIE_OUT" | jq -r '.space_id')
 echo "DATABRICKS_GENIE_SPACE_ID=${GENIE_SPACE_ID}" >> "$ENV_FILE"
 echo "Created Genie space: ${GENIE_SPACE_ID}"
 
+# --- Lakebase Autoscaling Postgres ---
+# Find or create a project named 'appkit-dev'. Each project auto-creates a
+# default branch and primary endpoint, so we just discover them. AppKit's
+# lakebase plugin reads LAKEBASE_ENDPOINT (resource path), PGHOST, PGDATABASE.
+PROJECT_ID="appkit-dev"
+PROJECT_NAME="projects/${PROJECT_ID}"
+
+if databricks postgres get-project "$PROJECT_ID" --output json >/dev/null 2>&1; then
+  echo "Using existing Lakebase project: ${PROJECT_NAME}"
+else
+  echo "Creating Lakebase Autoscaling project '${PROJECT_ID}' (this may take a minute)..."
+  if ! PROJECT_OUT=$(databricks postgres create-project "$PROJECT_ID" --output json 2>&1); then
+    cat >&2 <<EOF
+ERROR: Failed to create Lakebase Autoscaling project '${PROJECT_ID}'.
+
+CLI output:
+${PROJECT_OUT}
+
+Common causes:
+  - Lakebase Autoscaling is not enabled in this workspace (or not in this region).
+  - Your account lacks permission to create database projects.
+  - The project ID conflicts with an existing one in another state.
+
+What to try:
+  - Verify availability: databricks postgres list-projects
+  - Ask a workspace admin to enable Lakebase Autoscaling.
+  - If you proceed manually, set LAKEBASE_ENDPOINT, PGHOST, PGDATABASE in .env yourself.
+EOF
+    exit 1
+  fi
+  echo "Created project: ${PROJECT_NAME}"
+fi
+
+# Find the default branch (auto-created with the project).
+BRANCH_NAME=$(databricks postgres list-branches "$PROJECT_NAME" --output json \
+  | jq -r '[.[] | select(.status.default == true)] | .[0].name // empty')
+if [ -z "$BRANCH_NAME" ]; then
+  # Fall back to the first branch if no default is flagged.
+  BRANCH_NAME=$(databricks postgres list-branches "$PROJECT_NAME" --output json | jq -r '.[0].name // empty')
+fi
+if [ -z "$BRANCH_NAME" ]; then
+  echo "ERROR: No branches found under ${PROJECT_NAME}. Create one with:" >&2
+  echo "  databricks postgres create-branch ${PROJECT_NAME} main" >&2
+  exit 1
+fi
+echo "Using Lakebase branch: ${BRANCH_NAME}"
+
+# Find or create the primary endpoint.
+ENDPOINT_JSON=$(databricks postgres list-endpoints "$BRANCH_NAME" --output json | jq '.[0] // empty')
+if [ -z "$ENDPOINT_JSON" ] || [ "$ENDPOINT_JSON" = "null" ]; then
+  echo "Creating primary endpoint under ${BRANCH_NAME}..."
+  if ! ENDPOINT_OUT=$(databricks postgres create-endpoint "$BRANCH_NAME" "primary" --output json 2>&1); then
+    cat >&2 <<EOF
+ERROR: Failed to create Lakebase endpoint under ${BRANCH_NAME}.
+
+CLI output:
+${ENDPOINT_OUT}
+
+What to try:
+  - Verify the branch is healthy: databricks postgres get-branch ${BRANCH_NAME}
+  - Create manually in the UI and re-run this script.
+EOF
+    exit 1
+  fi
+  ENDPOINT_JSON="$ENDPOINT_OUT"
+fi
+
+LAKEBASE_ENDPOINT=$(echo "$ENDPOINT_JSON" | jq -r '.name')
+PGHOST=$(echo "$ENDPOINT_JSON" | jq -r '.status.hosts.host // empty')
+if [ -z "$PGHOST" ]; then
+  # Endpoint may still be provisioning. Re-fetch via get-endpoint.
+  PGHOST=$(databricks postgres get-endpoint "$LAKEBASE_ENDPOINT" --output json | jq -r '.status.hosts.host // empty')
+fi
+if [ -z "$PGHOST" ]; then
+  echo "ERROR: Endpoint ${LAKEBASE_ENDPOINT} has no host yet -- still provisioning?" >&2
+  echo "Check with: databricks postgres get-endpoint ${LAKEBASE_ENDPOINT}" >&2
+  exit 1
+fi
+
+echo "LAKEBASE_ENDPOINT=${LAKEBASE_ENDPOINT}" >> "$ENV_FILE"
+echo "PGHOST=${PGHOST}" >> "$ENV_FILE"
+echo "PGDATABASE=databricks_postgres" >> "$ENV_FILE"
+echo "Configured Lakebase endpoint: ${LAKEBASE_ENDPOINT}"
+
 echo ""
 echo "Wrote ${ENV_FILE}:"
 cat "$ENV_FILE"
