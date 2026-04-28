@@ -1,10 +1,42 @@
 Build and deploy a Databricks AppKit application called "wanderbricks-ops".
 
-You must complete every step without asking the user for input. Use the Databricks CLI
-(already authenticated) for all workspace operations. When you're done, print the
+Complete every step without asking the user for input, with one exception:
+in step 0, if multiple Databricks CLI profiles are configured, ask the user
+which profile to use. Once a profile is selected, run to completion using the
+Databricks CLI for all workspace operations. When you're done, print the
 deployed app URL — nothing else should require user action.
 
-## 0. Install Databricks skills
+## 0. Verify workspace connection
+
+Before anything else, confirm the Databricks CLI is authenticated and decide
+which workspace to use. List the configured profiles:
+
+```bash
+databricks auth profiles --output json
+```
+
+Decide based on what you find:
+
+- **No profiles configured** — stop. Tell the user to run `databricks auth login`
+  and re-invoke this prompt. Do not proceed.
+- **Exactly one profile** — use it. If it is not named `DEFAULT`, export
+  `DATABRICKS_CONFIG_PROFILE=<name>` so subsequent CLI calls and the AppKit
+  runtime use it.
+- **Multiple profiles** — this is the only step where you may pause for user
+  input. Show the user each profile name with its `host`, then ask which one
+  to use. Once chosen, `export DATABRICKS_CONFIG_PROFILE=<name>`.
+
+Verify the chosen profile actually works before proceeding:
+
+```bash
+databricks current-user me
+```
+
+If this command fails, surface the error and stop — do not continue to later
+steps. If you set `DATABRICKS_CONFIG_PROFILE`, remember to write it to `.env`
+in step 2 alongside the other variables.
+
+## 1. Install Databricks skills
 
 ```bash
 databricks experimental aitools install
@@ -12,7 +44,7 @@ databricks experimental aitools install
 
 This gives your agent access to Databricks-aware tools for workspace operations.
 
-## 1. Environment discovery
+## 2. Environment discovery
 
 ```bash
 DATABRICKS_HOST=$(databricks auth describe --output json | jq -r '.host')
@@ -45,20 +77,21 @@ GENIE_SPACE_ID=$(databricks genie spaces create \
   --output json | jq -r '.id')
 ```
 
-Write `.env`:
+Write `.env` (include `DATABRICKS_CONFIG_PROFILE` only if you set one in step 0):
 
 ```
 DATABRICKS_HOST=<value>
 DATABRICKS_WAREHOUSE_ID=<value>
 DATABRICKS_GENIE_SPACE_ID=<value>
+DATABRICKS_CONFIG_PROFILE=<value>   # only if non-DEFAULT profile selected in step 0
 ```
 
-## 2. Scaffold the app
+## 3. Scaffold the app
 
 Run `databricks apps init`, selecting Analytics, Genie, and Lakebase plugins.
 Then `cd wanderbricks-ops && npm install`.
 
-## 3. Application code
+## 4. Application code
 
 **Dataset**: `samples.wanderbricks` (vacation rental marketplace — ships with every workspace)
 
@@ -136,13 +169,13 @@ WHERE b.booking_id = :bookingId
 
 Use `@databricks/appkit` for the server and `@databricks/appkit-ui/react` for the frontend.
 
-## 4. Verify and deploy
+## 5. Verify and deploy
 
 1. Run `npm run dev` and confirm the app starts on `http://localhost:8000`
 2. Run `databricks bundle deploy`
 3. Get the deployed app URL from the deploy output
 
-## 5. Done
+## 6. Done
 
 Print a summary of what was created (warehouse, Genie space, app) and the URL
 of the deployed app. Do not print any remaining TODO items or manual steps.
