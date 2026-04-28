@@ -17,12 +17,13 @@ export function BookingManager() {
   const [newNote, setNewNote] = useState("");
 
   const params = useMemo(
-    () => (searchId ? { bookingId: sql.number(Number(searchId)) } : null),
+    () => (searchId ? { bookingId: sql.number(Number(searchId)) } : undefined),
     [searchId],
   );
   const { data, loading, error } = useAnalyticsQuery(
-    params ? "booking_detail" : null,
+    "booking_detail",
     params,
+    { autoStart: !!searchId },
   );
 
   const booking = data?.[0] ?? null;
