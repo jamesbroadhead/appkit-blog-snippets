@@ -89,16 +89,20 @@ No data syncing or copying required.
 
 **Server** (`server/server.ts`):
 - Plugins: `server({ autoStart: false })`, `analytics({})`, `genie({ spaces: { wanderbricks: process.env.DATABRICKS_GENIE_SPACE_ID } })`, `lakebase()`
-- On first start, auto-create the Lakebase tables if they don't exist:
+- On first start, auto-create the Lakebase tables if they don't exist. Use a
+  dedicated `app` schema — the app's service principal does not have `CREATE`
+  on `public`, so bare table names will fail with `permission denied for
+  schema public`:
   ```sql
-  CREATE TABLE IF NOT EXISTS booking_flags (
+  CREATE SCHEMA IF NOT EXISTS app;
+  CREATE TABLE IF NOT EXISTS app.booking_flags (
     flag_id      SERIAL PRIMARY KEY,
     booking_id   BIGINT NOT NULL UNIQUE,
     flag_reason  TEXT NOT NULL,
     flagged_by   TEXT NOT NULL DEFAULT 'app-user',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
-  CREATE TABLE IF NOT EXISTS booking_notes (
+  CREATE TABLE IF NOT EXISTS app.booking_notes (
     note_id      SERIAL PRIMARY KEY,
     booking_id   BIGINT NOT NULL,
     agent_email  TEXT NOT NULL,
@@ -148,7 +152,7 @@ WHERE b.booking_id = :bookingId
 
 **Frontend** (React, in `client/src/`):
 - `RevenueByDestination.tsx` — table using `useAnalyticsQuery("revenue_by_destination", { limit: sql.number(10) })`
-- `RevenueChart.tsx` — `<BarChart queryKey="revenue_by_destination" xKey="destination" yKey="total_revenue" />`
+- `RevenueChart.tsx` — `<BarChart queryKey="revenue_by_destination" parameters={{ limit: sql.number(10) }} xKey="destination" yKey="total_revenue" />` (the `parameters` prop is required — the chart re-issues the query, and `:limit` must be bound)
 - `BookingManager.tsx` — looks up a booking via `useAnalyticsQuery("booking_detail", { bookingId })`,
   displays guest/property details, shows a "Flag for review" button and a notes panel.
   Flag and notes operations use `fetch()` against the Lakebase routes.
