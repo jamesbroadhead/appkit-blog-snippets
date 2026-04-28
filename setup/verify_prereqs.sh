@@ -68,22 +68,31 @@ PROFILE_COUNT=$(echo "$PROFILES_JSON" | jq '.profiles | length' 2>/dev/null || e
 
 if [ "$PROFILE_COUNT" = "0" ]; then
   echo "  ${FAIL} No CLI profiles configured"
-  echo "         -> Run: databricks auth login"
-  failures=$((failures + 1))
+  echo "         -> Run: databricks auth login, then re-run this script."
+  exit 1
 elif [ "$PROFILE_COUNT" = "1" ]; then
   PROFILE_NAME=$(echo "$PROFILES_JSON" | jq -r '.profiles[0].name')
   PROFILE_HOST=$(echo "$PROFILES_JSON" | jq -r '.profiles[0].host')
   echo "  ${OK} Single profile: ${PROFILE_NAME} (${PROFILE_HOST})"
+elif [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ]; then
+  PROFILE_HOST=$(echo "$PROFILES_JSON" | jq -r \
+    --arg name "$DATABRICKS_CONFIG_PROFILE" \
+    '.profiles[] | select(.name == $name) | .host' | head -1)
+  echo "  ${OK} Using DATABRICKS_CONFIG_PROFILE=${DATABRICKS_CONFIG_PROFILE} (${PROFILE_HOST:-host unknown})"
 else
-  ACTIVE_PROFILE="${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
-  echo "  ${WARN} ${PROFILE_COUNT} profiles configured -- confirm you're targeting the right workspace."
+  echo "  ${PROFILE_COUNT} profiles configured -- pick one before continuing."
   echo ""
-  echo "         Configured profiles:"
-  echo "$PROFILES_JSON" | jq -r '.profiles[] | "           - \(.name) (\(.host))"'
+  echo "  Configured profiles:"
+  echo "$PROFILES_JSON" | jq -r '.profiles[] | "    - \(.name) (\(.host))"'
   echo ""
-  echo "         Active profile: ${ACTIVE_PROFILE}"
-  echo "         To switch:      export DATABRICKS_CONFIG_PROFILE=<profile-name>"
-  warnings=$((warnings + 1))
+  echo "  Pick the profile that targets the workspace where you want to deploy,"
+  echo "  then re-run this script:"
+  echo ""
+  echo "      export DATABRICKS_CONFIG_PROFILE=<profile-name>"
+  echo "      bash setup/verify_prereqs.sh"
+  echo ""
+  echo "Stopping early to avoid spurious failures from the wrong workspace."
+  exit 1
 fi
 
 echo ""
